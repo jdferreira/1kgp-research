@@ -12,23 +12,21 @@ Several metrics can be used (but for now only the one explained above!)
 TODO: Add new metrics
 """
 
-import sys
-
-import argparse
 import itertools
-import pickle
-import numpy as np
-import comparers
-import parse_vcf
 
-from collections import defaultdict
-from two_way_dict import TwoWayDict
+from vcf.comparer import ALL_COMPARERS as all_comparers
+from vcf.population import Population
+from vcf.model import Model
 
+import vcf.comparer
 
-def parse_individuals(file):
-    identifiers = {}
-    test_set = {}
-    superpopulations = defaultdict(list)
+def parse_population(file) -> Population:
+    """
+    Read a population file, where each non-empty line has two space-separated
+    fields: an individual identifier and the group they belong to.
+    """
+    
+    result = Population()
     
     for line in file:
         line = line.rstrip('\n')
@@ -49,93 +47,38 @@ def parse_individuals(file):
                 f'Line {line!r} is invalid: needs 2 fields, found {len(fields)}'
             )
         
-        identifier, superpopulation = fields
-        if superpopulation[0] == '?':
-            # This individual has an unknown superpopulation
-            # (or is to be used as a test individual)
-            superpopulation = superpopulation[1:]
-            if not superpopulation:
-                superpopulation = None
-            test_set[identifier] = superpopulation
+        identifier, group = fields
+        result.add_individual(identifier, group)
+    
+    return result
         
-        else:
-            identifiers[identifier] = {
-                'superpopulation': superpopulation
-            }
-            superpopulations[superpopulation].append(identifier)
-    
-    if not test_set:
-        # No unknown individuals. Is this an error for this study?
-        print(
-            'WARNING: The individuals file does not contain any individuals '
-            'with an unknown superpopulation',
-            file=sys.stderr
-        )
-    
-    return {
-        'identifiers': identifiers,
-        'test_set': test_set,
-        'superpopulations': superpopulations,
-    }
 
-def get_all_distances(vcf, individuals, compare):
+def make_model(population, comparer):
     """
-    Compute and return the distance values between all possible pairs of
-    individuals, given a comparison function 
-    """    
-    
-    pairs = itertools.combinations(individuals['identifiers'], 2)
-    return TwoWayDict(
-        {(id1, id2): compare(vcf, id1, id2) for id1, id2 in pairs}
-    )
-
-
-def get_test_distances(vcf, individuals, compare):
-    """
-    Compute and return the distance values between the individuals with
-    an unknown superpopulation and the other ones
+    Create a model that can be used to classify individuals in groups based on
+    the distances between them and the individuals in the groups.
     """
     
-    pairs = itertools.product(individuals['test_set'], individuals['identifiers'])
-    return {
-        (id1, id2): compare(vcf, id1, id2) for id1, id2 in pairs
-    }
-
-
-def make_model(distances, individuals):
-    """
-    For each superpopulation, find the internal distances and compute
-    mean and standard deviation.
-    """
+    model = Model()
     
-    model = TwoWayDict()
-    
-    superpopulations = individuals['superpopulations']
-    for superpopulation, identifiers in superpopulations.items():
-        values = []
-        for id1, id2 in itertools.combinations(identifiers, 2):
-            values.append(distances[id1, id2])
+    for group, identifiers in population.items():
+        values = [
+            comparer.compare(id1, id2)
+            for id1, id2 in itertools.combinations(identifiers, 2)
+        ]
         
-        model[superpopulation, superpopulation] = {
-            'min':  min(values),
-            'max':  max(values),
-            'mean': np.mean(values),
-            'std':  np.std(values),
-        }
+        model.add_within_values(group, values)
     
-    for sup1, sup2 in itertools.combinations(superpopulations, 2):
-        sup1_ids = superpopulations[sup1]
-        sup2_ids = superpopulations[sup2]
-        values = []
-        for id1, id2 in itertools.product(sup1_ids, sup2_ids):
-            values.append(distances[id1, id2])
+    for group1, group2 in itertools.combinations(population.groups(), 2):
+        group1_ids = population.group_to_individuals[group1]
+        group2_ids = population.group_to_individuals[group2]
         
-        model[sup1, sup2] = {
-            'min':  min(values),
-            'max':  max(values),
-            'mean': np.mean(values),
-            'std':  np.std(values),
-        }
+        values = [
+            comparer.compare(id1, id2)
+            for id1, id2 in itertools.product(group1_ids, group2_ids)
+        ]
+        
+        model.add_between_values(group1, group2, values)
     
     return model
 
@@ -145,51 +88,64 @@ def main():
     Processes the command line arguments and performs the comparisons
     """
     
+    import argparse
+    import gzip
+    
     parser = argparse.ArgumentParser(
         description='Output the comparison values of the genomes of several '
                     'individuals'
     )
     parser.add_argument(
-        'file', metavar='FILE', type=argparse.FileType('rb'),
-        help='The pickle file where the polymorphism data is stored'
+        'vcf_file', metavar='VCF_FILE', type=argparse.FileType('rb'),
+        help='The VCF file where the polymorphism data is stored'
     )
     parser.add_argument(
-        'individuals', metavar='IDENTIFIERS_FILE', type=argparse.FileType('rt'),
-        help='The file containing the identifiers of the individuals to compare'
+        'training_set', metavar='TRAIN_FILE', type=argparse.FileType('rt'),
+        help='The population file containing the individuals to train the model'
     )
     parser.add_argument(
-        '-c', '--comparer', choices=comparers.ALL, default='default',
+        'testing_set', metavar='TEST_FILE', type=argparse.FileType('rt'),
+        help='The population file containing the individuals to test the model'
+    )
+    parser.add_argument(
+        '-c', '--comparer', choices=all_comparers, default='default',
         help='The method used to compare two individuals. Right now the only '
-             'valid option is "default".'
+             'valid options are "default" and "random".'
     )
     
     args = parser.parse_args()
     
-    # Load the pickle file containing the dictionary where each key is an
-    # individual and each value is the list of their polymorphisms. Two
-    # polymorphisms are equal if their numbers are equal.
-    vcf = parse_vcf.parse(args.file)
+    # We use argparse's machinery to detect that the input VCF file is valid
+    # but we actaully want its name, not the stream, as this is what we need
+    # to give to the gzip library
+    args.vcf_file = args.vcf_file.name
     
-    # Parse the individuals file
-    individuals = parse_individuals(args.individuals)
+    # Read the populations
+    training_set = parse_population(args.training_set)
+    testing_set = parse_population(args.testing_set)
     
-    # Grab the actual comparer function
-    compare = comparers.ALL[args.comparer]
+    # Instantiate the comparer with the correct set of individuals
+    comparer = all_comparers[args.comparer]()
+    assert isinstance(comparer, vcf.comparer.Comparer)
     
-    # Compute distances (all vs. all)
-    distances = get_all_distances(vcf, individuals, compare)
+    all_individual_identifiers = (
+        list(training_set.individual_to_group) +
+        list(testing_set.individual_to_group)
+    )
+    comparer.set_individuals(all_individual_identifiers)
+    with gzip.open(args.vcf_file, 'rt') as stream:
+        comparer.run(stream)
     
-    # Compute distances within superpopulations and between different
-    # superpopulations in order to create a model for prediction
-    model = make_model(distances, individuals)
+    # Compute distances within groups and between different groups
+    # and create a model for classification
+    model = make_model(training_set, comparer)
     
-    # Compare the test individuals with all the known
-    test_distances = get_test_distances(vcf, individuals, compare)
+    # # Compare the test individuals with all the known
+    # test_distances = get_test_distances(vcf, individuals, compare)
     
     from pprint import pprint
-    pprint(model.dict)
-    pprint(test_distances)
-    
+    pprint(model.within)
+    pprint(model.between.dict)
 
 
 if __name__ == '__main__':
