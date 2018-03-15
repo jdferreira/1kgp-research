@@ -25,6 +25,13 @@ class Population:
         self.individual_to_group[identifier] = group
         self.group_to_individuals[group].append(identifier)
     
+    def individuals(self):
+        """
+        Return a list of the individuals in this population
+        """
+        
+        return list(self.individual_to_group)
+    
     def groups(self):
         """
         Return a list of the groups in this population

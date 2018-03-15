@@ -20,6 +20,9 @@ class TwoWayDict(object):
     def __getitem__(self, key):
         return self.dict[normalize_key(key)]
     
+    def items(self):
+        return self.dict.items()
+
 def normalize_key(key):
     key1, key2 = key
     if key1 < key2:

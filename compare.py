@@ -12,6 +12,8 @@ Several metrics can be used (but for now only the one explained above!)
 TODO: Add new metrics
 """
 
+import argparse
+import gzip
 import itertools
 
 from vcf.comparer import ALL_COMPARERS as all_comparers
@@ -83,13 +85,78 @@ def make_model(population, comparer):
     return model
 
 
-def main():
+def compare_test_individuals(test_population, train_population, comparer):
     """
-    Processes the command line arguments and performs the comparisons
+    Compare test individuals with the train individuals, and return a dictionary
+    where each key is a pair of (test individual, group) and the values are the
+    statistics of the comparison values 
     """
     
-    import argparse
-    import gzip
+    result = {}
+    
+    for individual in test_population.individuals():
+        result[individual] = {}
+        for group, group_individuals in train_population.items():
+            values = [comparer.compare(individual, i) for i in group_individuals]
+            stats = Model.compute_stats(values)
+            result[individual][group] = stats
+    
+    return result
+
+
+def print_model(model):
+    """
+    Print the details of a model to the stardard output following a
+    non-specified reference
+    """
+    
+    print('# Model')
+    print('\t'.join(('Group pair', 'Min', 'Max', 'Mean', 'Stdev')))
+    
+    print('# Distances within groups')
+    for group, stats in model.within.items():
+        print(group + '/' + group + '\t' + format_stats(stats))
+    
+    print('# Distances between groups')
+    for group_pair, stats in model.between.items():
+        group1, group2 = group_pair
+        print(group1 + '/' + group2 + '\t' + format_stats(stats))
+
+
+def print_test_distances(test_distances: dict, test_population: Population):
+    """
+    Print the details of the comparison between the test and the train
+    individuals following a non-specified reference
+    """
+    
+    print('# Test individuals')
+    print('\t'.join(('Individual/group', 'Min', 'Max', 'Mean', 'Stdev')))
+    for individual, group_stats in test_distances.items():
+        expected = test_population.individual_to_group[individual]
+        print(f'# {individual} -- expected group {expected}')
+        for group, stats in group_stats.items():
+            print(individual + '/' + group + '\t' + format_stats(stats))
+
+
+def format_stats(stats):
+    """
+    Return a tab-separated line with the given statistics 
+    """
+    
+    fields = (
+        f'{stats["min"]}',
+        f'{stats["max"]}',
+        f'{stats["mean"]:.2f}',
+        f'{stats["stdev"]:.2f}',
+    )
+    return '\t'.join(fields)
+
+
+def get_arguments():
+    """
+    Creates an argument parser that can handle command line arguments and
+    returns the parsed arguments
+    """
     
     parser = argparse.ArgumentParser(
         description='Output the comparison values of the genomes of several '
@@ -120,13 +187,23 @@ def main():
     # to give to the gzip library
     args.vcf_file = args.vcf_file.name
     
+    return args
+
+
+def main():
+    """
+    Processes the command line arguments and performs the comparisons
+    """
+    
+    args = get_arguments()
+    
     # Read the populations
     training_set = parse_population(args.training_set)
     testing_set = parse_population(args.testing_set)
     
     # Instantiate the comparer with the correct set of individuals
     comparer = all_comparers[args.comparer]()
-    assert isinstance(comparer, vcf.comparer.Comparer)
+    assert isinstance(comparer, vcf.comparer.Comparer) # pylint hint!
     
     all_individual_identifiers = (
         list(training_set.individual_to_group) +
@@ -140,12 +217,12 @@ def main():
     # and create a model for classification
     model = make_model(training_set, comparer)
     
-    # # Compare the test individuals with all the known
-    # test_distances = get_test_distances(vcf, individuals, compare)
+    # Compare the test individuals with all the trainig individuals
+    test_distances = compare_test_individuals(testing_set, training_set, comparer)
     
-    from pprint import pprint
-    pprint(model.within)
-    pprint(model.between.dict)
+    print_model(model)
+    print()
+    print_test_distances(test_distances, testing_set)
 
 
 if __name__ == '__main__':
