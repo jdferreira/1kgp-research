@@ -20,7 +20,19 @@ def extract_genotype(variant):
     Return exactly the GT data for a particular VCF field
     """
     
-    return variant.split(':')[0]
+    # Get the genotype of this individual
+    genotype = variant.split(':')[0]
+    
+    # Split for diploid (or higher ploidy) chromosomes
+    if '/' in genotype:
+        alleles = genotype.split('/')
+    elif '|' in genotype:
+        alleles = genotype.split('|')
+    else:
+        alleles = [genotype]
+    
+    # Remove extra spaces surrounding the alleles
+    return [i.strip() for i in alleles]
 
 class Comparer(vcf.handler.Handler):
     """
@@ -102,6 +114,12 @@ class DefaultComparer(Comparer):
     def update_comparison(self, fixed_fields, format_field, id1, id2, variant1, variant2):
         variant1 = extract_genotype(variant1)
         variant2 = extract_genotype(variant2)
+        
+        # For each individual, remove the non-mutated alleles, sort and remove
+        # duplicates. Equality is defined here as whether the resulting sets
+        # are equal
+        variant1 = {i for i in variant1 if i != '0'}
+        variant2 = {i for i in variant2 if i != '0'}
         
         if variant1 != variant2:
             value = 1
