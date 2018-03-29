@@ -55,6 +55,33 @@ def parse_population(file) -> Population:
     return result
         
 
+def get_distances_by_group(population: Population, comparer):
+    """
+    Return a dictionary that associates a pair of groups in the provided
+    population with the list of comparison values calculated between the
+    individuals in those two groups.
+    """
+    
+    result = {}
+    
+    pairs = itertools.combinations_with_replacement(population.groups(), 2)
+    for group1, group2 in pairs:
+        group1_ids = population.group_to_individuals[group1]
+        group2_ids = population.group_to_individuals[group2]
+        
+        values = [
+            comparer.compare(id1, id2)
+            for id1, id2 in itertools.product(group1_ids, group2_ids)
+            if group1 != group2 or id1 != id2
+            # We need to ensure tht, in case the two groups are the same,
+            # then the individual is not compared with itself
+        ]
+        
+        result[group1, group2] = values
+    
+    return result
+
+
 def make_model(population, comparer):
     """
     Create a model that can be used to classify individuals in groups based on
@@ -102,6 +129,16 @@ def compare_test_individuals(test_population, train_population, comparer):
             result[individual][group] = stats
     
     return result
+
+
+def print_table(table):
+    """
+    Print the dictionary that is created with the `get_distances_by_group`
+    function
+    """
+    
+    for (group1, group2), values in table.items():
+        print(f'{group1}\t{group2}\t{values!r}')
 
 
 def print_model(model):
@@ -171,13 +208,31 @@ def get_arguments():
         help='The population file containing the individuals to train the model'
     )
     parser.add_argument(
-        'testing_set', metavar='TEST_FILE', type=argparse.FileType('rt'),
-        help='The population file containing the individuals to test the model'
-    )
-    parser.add_argument(
         '-c', '--comparer', choices=all_comparers, default='default',
         help='The method used to compare two individuals. Right now the only '
              'valid options are "default" and "random".'
+    )
+    
+    subparsers = parser.add_subparsers(
+        title='Subcommands',
+        dest='action',
+        metavar='ACTION'
+    )
+    subparsers.required = True
+    
+    predict_parser = subparsers.add_parser(
+        'predict',
+        help='Predict the population of a set of individuals'
+    )
+    predict_parser.add_argument(
+        'testing_set', metavar='TEST_FILE', type=argparse.FileType('rt'),
+        help='The population file containing the individuals to test the model'
+    )
+    
+    subparsers.add_parser(
+        'table',
+        help='Output a table with the comparison values of all possible pairs '
+             'of individuals in the training dataset'
     )
     
     args = parser.parse_args()
@@ -185,6 +240,7 @@ def get_arguments():
     # We use argparse's machinery to detect that the input VCF file is valid
     # but we actaully want its name, not the stream, as this is what we need
     # to give to the gzip library
+    args.vcf_file.close()
     args.vcf_file = args.vcf_file.name
     
     return args
@@ -196,6 +252,18 @@ def main():
     """
     
     args = get_arguments()
+    
+    if args.action == 'predict':
+        make_prediction(args)
+    elif args.action == 'table':
+        make_table(args)
+
+
+def make_prediction(args):
+    """
+    Perform the comparisons in the training set and report on the trained model
+    and the possible classification of the provided test individuals.
+    """
     
     # Read the populations
     training_set = parse_population(args.training_set)
@@ -223,6 +291,30 @@ def main():
     print_model(model)
     print()
     print_test_distances(test_distances, testing_set)
+
+
+def make_table(args):
+    """
+    Perform the comparisons between all possible pairs of individuals and
+    print those values
+    """
+    
+    # Read the populations
+    population = parse_population(args.training_set)
+    
+    # Instantiate the comparer with the correct set of individuals
+    comparer = all_comparers[args.comparer]()
+    assert isinstance(comparer, vcf.comparer.Comparer) # pylint hint!
+    
+    comparer.set_individuals(list(population.individual_to_group))
+    with gzip.open(args.vcf_file, 'rt') as stream:
+        comparer.run(stream)
+    
+    # Compute the distances between every pair of individuals and report
+    # the actual distance values within each group and between groups
+    distances = get_distances_by_group(population, comparer)
+    
+    print_table(distances)
 
 
 if __name__ == '__main__':
