@@ -5,7 +5,6 @@ TODO
 import string
 import random
 import itertools
-from collections import defaultdict
 
 import vcf.handler
 
@@ -15,35 +14,27 @@ __all__ = [
     'ALL_COMPARERS',
 ]
 
-def extract_genotype(variant):
-    """
-    Return exactly the GT data for a particular VCF field
-    """
-    
-    # Get the genotype of this individual
-    genotype = variant.split(':')[0]
-    
-    # Split for diploid (or higher ploidy) chromosomes
-    if '/' in genotype:
-        alleles = genotype.split('/')
-    elif '|' in genotype:
-        alleles = genotype.split('|')
-    else:
-        alleles = [genotype]
-    
-    # Remove extra spaces surrounding the alleles
-    return [i.strip() for i in alleles]
-
 class Comparer(vcf.handler.Handler):
     """
     Bare bone implementation of a `Handler` that returns a comparison of two
     individuals based on the information in one VCF file
     """
     
-    def __init__(self):
+    def __init__(self, init_factory=int):
+        """
+        Initialize a comparer by configuring the initial value that all pairs of
+        individuals will start with. This is given not as an actual value but as
+        a 0-argument function that produces a new value each time, just like the
+        default value in `collections.defaultdict`.
+        """
+        
         super().__init__()
         self.input_individuals = None
         self.individual_indeces = {}
+        self.pairs = []
+        self.idx_pairs = []
+        self.values = []
+        self.init_factory = init_factory
     
     def set_individuals(self, input_individuals):
         """
@@ -67,27 +58,82 @@ class Comparer(vcf.handler.Handler):
                     raise Exception(
                         f'Individual {individual} not present in the VCF file'
                     )
+        
+        # Each line read from now on will be used to update the comparison
+        # of all pairs of individuals of interest. To speed things up, we need
+        # to be able to quickly find all interesting pairs and compare them
+        self.pairs = list(itertools.combinations(self.individual_indeces.keys(), 2))
+        self.idx_pairs = list(itertools.combinations(self.individual_indeces.values(), 2))
+        self.values = [self.init_factory() for _ in self.pairs]
+    
+    def process_variant(self, fixed_fields, format_field, variant_field):
+        """
+        For a given variant value, transform a variant field value into
+        something that can be directly compared (to be used by the
+        `update_comparison` method method. This transformation is useful if that
+        method needs to perform a transformation, but ensures that the
+        transformation is only performed once per field, instead of every time
+        the value is needed to update the comparison values.
+        
+        `fixed_fields` is the list of metadata fields in this line (the first 8
+        columns), `format_field` is either the FORMAT field for this line or an
+        empty string, if the column does not exist, and `variant_field` is the
+        actual data to transform.
+        """
+        
+        #pylint: disable=W0613,R0201
+        
+        # By default, do not do any transformation
+        return variant_field
     
     def process_data(self, fixed_fields, format_field, data_fields):
-        for id1, id2 in itertools.combinations(self.individual_indeces, 2):
-            variant1 = data_fields[self.individual_indeces[id1]]
-            variant2 = data_fields[self.individual_indeces[id2]]
+        # Start by transforming the data where it matters
+        for idx in self.individual_indeces.values():
+            data_fields[idx] = self.process_variant(
+                fixed_fields,
+                format_field,
+                data_fields[idx]
+            )
+        
+        # For each pair to be compared, update the comparison value
+        for i, idx_pair in enumerate(self.idx_pairs):
+            idx1, idx2 = idx_pair
             
-            self.update_comparison(fixed_fields, format_field, id1, id2, variant1, variant2)
+            self.update_comparison(i, data_fields[idx1], data_fields[idx2])
     
-    def update_comparison(self, fixed_fields, format_field, id1, id2, variant1, variant2):
+    def update_comparison(self, pair_idx, variant1, variant2):
         """
-        Update the state of this comparer based on this piece of VCF information
-        where `fixed_fields` is the list of metadata about the particular VCF
-        being compared (the first 8 columns of the line), `format_field` is
-        either the FORMAT field for this line or an empty string, if the column
-        does not exist, `id1` and `id2` are identifier strings of the two
-        individuals being compared, and `variant1` and `variant2` are the data
-        for this VCF for these two individuals.
+        Update the state of this comparer based on this piece of VCF
+        information. Each line of the VCF file is used to update the _current_
+        version of the comparison value for all pairs of interest. The pairs of
+        interest are actually computed with the `set_individuals` method. In
+        `update_comparison`, a pair of variants `(variant1, variant2)` is used
+        to update the comparison value that currently lives in
+        `self.value[pair_idx]`. As such, any implementation of this method must
+        use the values of the arguments `variant1` and `variant2` and then
+        somehow write to `self.value[pair_idx]`. The arguments passed on to this
+        method are the result of applying `process_variant` to the actual
+        variant fields in the VCF file.
         """
         
         raise NotImplementedError
     
+    
+    def terminate(self):
+        """
+        Produce a dictionary of all pairs of individuals and place there the
+        values computed from the VCF file, and then release some resources.
+        """
+        
+        new_values = {}
+        for i, pair in enumerate(self.pairs):
+            id1, id2 = pair
+            new_values[id1, id2] = new_values[id2, id1] = self.values[i]
+        self.values = new_values
+        
+        # Release resources
+        self.pairs = None
+        self.idx_pairs = None
     
     def compare(self, id1, id2):
         """
@@ -95,7 +141,7 @@ class Comparer(vcf.handler.Handler):
         between the two individuals
         """
         
-        raise NotImplementedError
+        return self.values[id1, id2]
 
 
 class DefaultComparer(Comparer):
@@ -104,17 +150,29 @@ class DefaultComparer(Comparer):
     number of VCF's that are diffferent between the two is `n`.
     """
     
-    def __init__(self):
-        super().__init__()
-        self.result = defaultdict(int)
-    
     def process_meta(self, line):
         pass
     
-    def update_comparison(self, fixed_fields, format_field, id1, id2, variant1, variant2):
-        variant1 = extract_genotype(variant1)
-        variant2 = extract_genotype(variant2)
+    def process_variant(self, fixed_fields, format_field, variant_field):
+        """
+        Return exactly the GT data for a particular VCF field
+        """
         
+        # Get the genotype of this individual
+        genotype = variant_field.split(':')[0]
+        
+        # Split for diploid (or higher ploidy) chromosomes
+        if '/' in genotype:
+            alleles = genotype.split('/')
+        elif '|' in genotype:
+            alleles = genotype.split('|')
+        else:
+            alleles = [genotype]
+        
+        # Remove extra spaces surrounding the alleles
+        return [i.strip() for i in alleles]
+    
+    def update_comparison(self, pair_idx, variant1, variant2):
         # For each individual, remove the non-mutated alleles, sort and remove
         # duplicates. Equality is defined here as whether the resulting sets
         # are equal
@@ -126,17 +184,7 @@ class DefaultComparer(Comparer):
         else:
             value = 0
         
-        self.result[id1, id2] += value
-    
-    def compare(self, id1, id2):
-        if (id1, id2) in self.result:
-            return self.result[id1, id2]
-        elif (id2, id1) in self.result:
-            return self.result[id2, id1]
-        else:
-            raise ValueError(
-                f'Cannot find individuals {id1!r} or {id2!r} in the result'
-            )
+        self.values[pair_idx] += value
 
 
 class RandomComparer(Comparer):
@@ -152,10 +200,13 @@ class RandomComparer(Comparer):
     def process_meta(self, line):
         pass
     
-    def update_comparison(self, fixed_fields, format_field, id1, id2, variant1, variant2):
+    def update_comparison(self, pair_idx, variant1, variant2):
         pass
     
     def compare(self, id1, id2):
+        #pylint: disable=W0101,W0511
+        return random.randrange(10) # TODO: Remove me and previous line
+        
         hash1 = hash(self.salt + id1)
         hash2 = hash(self.salt + id2)
         
