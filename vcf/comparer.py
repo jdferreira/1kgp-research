@@ -204,11 +204,11 @@ class RandomComparer(Comparer):
         pass
     
     def compare(self, id1, id2):
-        #pylint: disable=W0101,W0511
-        return random.randrange(10) # TODO: Remove me and previous line
+        import sys
+        mask = (1 << sys.hash_info.width) - 1
         
-        hash1 = hash(self.salt + id1)
-        hash2 = hash(self.salt + id2)
+        hash1 = hex(hash(self.salt + id1) & mask)
+        hash2 = hex(hash(self.salt + id2) & mask)
         
         result = 0
         for char1, char2 in zip(hash1, hash2):
