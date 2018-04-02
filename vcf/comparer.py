@@ -155,7 +155,9 @@ class DefaultComparer(Comparer):
     
     def process_variant(self, fixed_fields, format_field, variant_field):
         """
-        Return exactly the GT data for a particular VCF field
+        Return exactly the GT data for a particular VCF field. For each
+        individual, remove the non-mutated alleles, sort and remove duplicates.
+        Equality is defined here as whether the resulting sets are equal.
         """
         
         # Get the genotype of this individual
@@ -170,15 +172,9 @@ class DefaultComparer(Comparer):
             alleles = [genotype]
         
         # Remove extra spaces surrounding the alleles
-        return [i.strip() for i in alleles]
+        return {i.strip() for i in alleles if i.strip() != '0'}
     
     def update_comparison(self, pair_idx, variant1, variant2):
-        # For each individual, remove the non-mutated alleles, sort and remove
-        # duplicates. Equality is defined here as whether the resulting sets
-        # are equal
-        variant1 = {i for i in variant1 if i != '0'}
-        variant2 = {i for i in variant2 if i != '0'}
-        
         if variant1 != variant2:
             value = 1
         else:
