@@ -47,3 +47,10 @@ class Population:
         """
         
         return self.group_to_individuals.items()
+    
+    def has_individual(self, individual):
+        """
+        Determines whether this population contains a specific individual.
+        """
+        
+        return individual in self.individual_to_group
