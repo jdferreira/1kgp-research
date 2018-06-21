@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 
 """
-Given a pickle file containing the polymorphism data of genomes, compare
-two individuals based on their polymorphisms. The result is the number
-of said polymorphisms where the genome of the two individuals differ.
+Given a VCF file (or a gzipped VSF file) containing the polymorphism data of
+genomes, compare two individuals based on their polymorphisms. The result is the
+number of said polymorphisms where the genome of the two individuals differ.
 
 More than two individuals can be provided, in which case the tool will output
 the comparison between any pair of individuals.
