@@ -28,6 +28,7 @@ class Handler(object):
         """
         
         self.has_genotype_field = None # Still undetermined
+        self.terminate_early = False
     
     
     def run(self, stream):
@@ -41,6 +42,9 @@ class Handler(object):
         self.prepare()
         
         for line in stream:
+            if self.terminate_early:
+                break        
+
             line = line.rstrip('\n')
             
             if line.startswith('##'):
