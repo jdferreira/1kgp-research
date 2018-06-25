@@ -17,43 +17,10 @@ import gzip
 import itertools
 
 from vcf.comparer import ALL_COMPARERS as all_comparers
-from vcf.population import Population
+from vcf.population import Population, parse_population
 from vcf.model import Model
 
 import vcf.comparer
-
-def parse_population(file) -> Population:
-    """
-    Read a population file, where each non-empty line has two space-separated
-    fields: an individual identifier and the group they belong to.
-    """
-    
-    result = Population()
-    
-    for line in file:
-        line = line.rstrip('\n')
-        
-        # Remove possible comments
-        comment_start = line.find('#')
-        if comment_start >= 0:
-            line = line[:comment_start]
-        line = line.strip()
-        
-        if not line:
-            # Ignore empty lines
-            continue
-        
-        fields = line.split()
-        if len(fields) != 2:
-            raise Exception(
-                f'Line {line!r} is invalid: needs 2 fields, found {len(fields)}'
-            )
-        
-        identifier, group = fields
-        result.add_individual(identifier, group)
-    
-    return result
-        
 
 def get_distances_by_group(population: Population, comparer):
     """

@@ -25,6 +25,11 @@ class Population:
         self.individual_to_group[identifier] = group
         self.group_to_individuals[group].append(identifier)
     
+    def remove_individual(self, identifier):
+        group = self.individual_to_group[identifier]
+        del self.individual_to_group[identifier]
+        self.group_to_individuals[group].remove(identifier)
+    
     def individuals(self):
         """
         Return a list of the individuals in this population
@@ -54,3 +59,36 @@ class Population:
         """
         
         return individual in self.individual_to_group
+
+
+def parse_population(file) -> Population:
+    """
+    Read a population file, where each non-empty line has two space-separated
+    fields: an individual identifier and the group they belong to.
+    """
+    
+    result = Population()
+    
+    for line in file:
+        line = line.rstrip('\n')
+        
+        # Remove possible comments
+        comment_start = line.find('#')
+        if comment_start >= 0:
+            line = line[:comment_start]
+        line = line.strip()
+        
+        if not line:
+            # Ignore empty lines
+            continue
+        
+        fields = line.split()
+        if len(fields) != 2:
+            raise Exception(
+                f'Line {line!r} is invalid: needs 2 fields, found {len(fields)}'
+            )
+        
+        identifier, group = fields
+        result.add_individual(identifier, group)
+    
+    return result
