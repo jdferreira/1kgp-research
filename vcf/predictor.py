@@ -157,19 +157,26 @@ class Predictor(Handler):
             
             result = {}
             for pop in SUPERPOPULATIONS:
-                result[pop] = sum(float(i) for i in info[pop + '_AF'].split(','))
-        
-        else:
-            counts = defaultdict(float)
-            totals = defaultdict(int)
-            for pop, f in zip(self.population_labels, genotypes):
-                if pop == '---':
-                    continue
-                
-                counts[pop] += f
-                totals[pop] += 1
+                if pop + '_AF' in info:
+                    result[pop] = sum(float(i) for i in info[pop + '_AF'].split(','))
+                else:
+                    break
             
-            result = {pop: c/totals[pop] for pop, c in counts.items()}
+            if len(result) != len(SUPERPOPULATIONS):
+                self.from_info = False
+            else:
+                return result
+        
+        counts = defaultdict(float)
+        totals = defaultdict(int)
+        for pop, f in zip(self.population_labels, genotypes):
+            if pop == '---':
+                continue
+            
+            counts[pop] += f
+            totals[pop] += 1
+        
+        result = {pop: c/totals[pop] for pop, c in counts.items()}
         
         return result
     
