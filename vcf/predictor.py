@@ -247,15 +247,18 @@ class PredictorJoao(Predictor):
         
         for individual, l in self.structures.items():
             ordered = Counter(l).most_common()
-            diff = ordered[0][1] - ordered[1][1]
             
-            if relative:
-                diff /= ordered[0][1]
-            
-            if diff >= self.t2:
+            if len(ordered) == 1:
                 self.labels[individual] = ordered[0][0]
             else:
-                self.labels[individual] = '---'
+                diff = ordered[0][1] - ordered[1][1]
+                if relative:
+                    diff /= ordered[0][1]
+                
+                if diff >= self.t2:
+                    self.labels[individual] = ordered[0][0]
+                else:
+                    self.labels[individual] = '---'
 
 
 class PredictorMariana(Predictor):

@@ -41,7 +41,7 @@ def get_arguments():
              'used to test the model. See also -t.'
     )
     parser.add_argument(
-        '-p', '--polymorphisms', metavar='POLYMORPHISMS',
+        '-m', '--polymorphisms', metavar='POLYMORPHISMS',
         type=argparse.FileType('rt'),
         help='The file containing the polymorphism identifiers to base the '
              'prediciton on. Each line must be a single identifier.'
