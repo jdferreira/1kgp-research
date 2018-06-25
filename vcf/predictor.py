@@ -26,6 +26,7 @@ class Predictor(Handler):
         
         self.population: Population
         self.polymorphisms: Set[str] = None
+        self.polymorphism_count = 0
         
         # Initialize a dictionary that converts individual identifiers to
         # their index in the VCF file
@@ -112,6 +113,7 @@ class Predictor(Handler):
         if self.polymorphisms is not None:
             if fixed_fields[ID_COLUMN] not in self.polymorphisms:
                 return
+            self.polymorphism_count += 1
         
         genotypes = [
             self.process_variant(fixed_fields, format_field, i)
@@ -133,6 +135,9 @@ class Predictor(Handler):
             for value in value_list:
                 self.update_individual(individual, value)
         
+        if self.polymorphisms and self.polymorphism_count == len(self.polymorphisms):
+            self.terminate_early = True
+    
     
     def filter_genotypes(self, genotypes):
         """

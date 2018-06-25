@@ -41,6 +41,12 @@ def get_arguments():
              'used to test the model. See also -t.'
     )
     parser.add_argument(
+        '-p', '--polymorphisms', metavar='POLYMORPHISMS',
+        type=argparse.FileType('rt'),
+        help='The file containing the polymorphism identifiers to base the '
+             'prediciton on. Each line must be a single identifier'.
+    )
+    parser.add_argument(
         '-t', '--test-fraction', metavar='FRACTION', type=float, default=0.1,
         help='If no list of individuals is given, a fraction of the population '
              'is randomly selected to serve as testing data. This flag '
@@ -71,6 +77,26 @@ def main():
     make_prediction(args)
 
 
+def read_polymorphisms(file):
+    result = []
+    for line in file:
+        line = line.rstrip('\n')
+        
+        # Remove possible comments
+        comment_start = line.find('#')
+        if comment_start >= 0:
+            line = line[:comment_start]
+        line = line.strip()
+        
+        if not line:
+            # Ignore empty lines
+            continue
+        
+        result.append(line)
+    
+    return result
+
+
 def make_prediction(args):
     """
     Classify based on the given arguments.
@@ -96,6 +122,10 @@ def make_prediction(args):
     predictor: vcf.predictor.Predictor = all_predictors[args.predictor](0, 0)
     
     predictor.set_populations(population, individuals.individuals())
+    
+    if args.polymorphisms:
+        polymorphisms = read_polymorphisms(args.polymorphisms)
+        predictor.set_polymorphisms(polymorphisms)
     
     with gzip.open(args.vcf_file, 'rt') as stream:
         predictor.run(stream)
