@@ -44,7 +44,7 @@ def get_arguments():
         '-p', '--polymorphisms', metavar='POLYMORPHISMS',
         type=argparse.FileType('rt'),
         help='The file containing the polymorphism identifiers to base the '
-             'prediciton on. Each line must be a single identifier'.
+             'prediciton on. Each line must be a single identifier.'
     )
     parser.add_argument(
         '-t', '--test-fraction', metavar='FRACTION', type=float, default=0.1,
