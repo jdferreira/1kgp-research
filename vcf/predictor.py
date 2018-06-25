@@ -7,6 +7,7 @@ from vcf.handler import Handler
 
 ID_COLUMN = 2
 INFO_COLUMN = 7
+SUPERPOPULATIONS = {'AFR', 'AMR', 'EAS', 'EUR', 'SAS'}
 
 __all__ = [
     'PredictorMariana',
@@ -44,7 +45,7 @@ class Predictor(Handler):
         self.population = population
         self.individuals = individuals
         
-        self.from_info = set(self.population.groups()) == {'AFR', 'AMR', 'EAS', 'EUR', 'SAS'}
+        self.from_info = set(self.population.groups()) == SUPERPOPULATIONS
     
     
     def set_polymorphisms(self, polymorphisms):
@@ -155,7 +156,7 @@ class Predictor(Handler):
                 if '=' in i)
             
             result = {}
-            for pop in ('AFR', 'AMR', 'EAS', 'EUR', 'SAS'):
+            for pop in SUPERPOPULATIONS:
                 result[pop] = sum(float(i) for i in info[pop + '_AF'].split(','))
         
         else:
