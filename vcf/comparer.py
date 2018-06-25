@@ -26,6 +26,8 @@ class Comparer(vcf.handler.Handler):
         individuals will start with. This is given not as an actual value but as
         a 0-argument function that produces a new value each time, just like the
         default value in `collections.defaultdict`.
+        
+        By default, this initial value is produced with the `int` function.
         """
         
         super().__init__()
