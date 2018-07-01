@@ -37,7 +37,7 @@ def get_arguments():
         '-i', '--individuals', metavar='INDIVIDUALS',
         type=argparse.FileType('rt'),
         help='The file containing the individuals to test the model. '
-             'If not provided, 10% of the individuals in the population are '
+             'If not provided, 10%% of the individuals in the population are '
              'used to test the model. See also -t.'
     )
     parser.add_argument(
