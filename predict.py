@@ -31,7 +31,12 @@ def get_arguments():
     )
     parser.add_argument(
         'population', metavar='POPULATION', type=argparse.FileType('rt'),
-        help='The population file containing the individuals to train the model'
+        help='The population file containing the individuals to train the '
+             'model. This file is used to determine the population of each '
+             'individual and then to calculate allele frequency per '
+             'population. Notice that if you are using the five '
+             'superpopulations and the file contains AMR_AF, etc, then this '
+             'file is not used (you can specify /dev/null for example).'
     )
     parser.add_argument(
         '-i', '--individuals', metavar='INDIVIDUALS',
