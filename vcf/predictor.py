@@ -46,7 +46,9 @@ class Predictor(Handler):
         self.population = population
         self.individuals = individuals
         
-        self.from_info = set(self.population.groups()) == SUPERPOPULATIONS
+        self.from_info = (
+            set(self.population.groups()) == SUPERPOPULATIONS or
+            len(self.population.groups()) == 0)
     
     
     def set_polymorphisms(self, polymorphisms):

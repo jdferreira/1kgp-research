@@ -26,9 +26,10 @@ class Population:
         self.group_to_individuals[group].append(identifier)
     
     def remove_individual(self, identifier):
-        group = self.individual_to_group[identifier]
-        del self.individual_to_group[identifier]
-        self.group_to_individuals[group].remove(identifier)
+        if identifier in self.individual_to_group:
+            group = self.individual_to_group[identifier]
+            del self.individual_to_group[identifier]
+            self.group_to_individuals[group].remove(identifier)
     
     def individuals(self):
         """
