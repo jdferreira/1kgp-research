@@ -135,7 +135,7 @@ def make_prediction(args):
     with gzip.open(args.vcf_file, 'rt') as stream:
         predictor.run(stream)
     
-    print('\n'.join(f'{i} : {j} : {individuals.individual_to_group[i]}' for i, j in predictor.labels.items()))
+    print('\n'.join(f'{i} : {individuals.individual_to_group[i]} : {j}' for i, j in predictor.labels.items()))
 
 if __name__ == '__main__':
     main()
